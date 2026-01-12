@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_libserialport/flutter_libserialport.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/serial/serial_packet.dart';
 import 'connection_provider.dart';
@@ -12,14 +13,14 @@ part 'device_discovery_provider.g.dart';
 
 enum DeviceType { receiver, sender, unknown }
 
-// 1. MUTABLE CLASS: Allows updating subscription/type in place
+// 1. MUTABLE CLASS (The "Single Instance" Fix)
 class ConnectedDevice {
   final String portName;
-  DeviceType type; // Mutable
-  String macAddress; // Mutable
+  DeviceType type;
+  String macAddress;
   final SerialPort port;
   final SerialPortReader reader;
-  StreamSubscription? subscription; // Mutable
+  StreamSubscription? subscription;
   String? pairedToMac;
 
   ConnectedDevice({
@@ -48,10 +49,10 @@ class DeviceManager extends _$DeviceManager {
   Timer? _scanTimer;
   final List<ConnectedDevice> _activeDevices = [];
 
-  // STATE: The Snapshot of ports from the previous check
+  // STATE
   Set<String> _lastKnownPorts = {};
 
-  // BLACKLIST: Ports that crash or aren't ours
+  // BLACKLIST (The "Anti-Lag" Fix)
   final Set<String> _ignoredPorts = {};
 
   // BUFFER & METRICS
@@ -60,7 +61,8 @@ class DeviceManager extends _$DeviceManager {
 
   @override
   List<ConnectedDevice> build() {
-    print("CORE: Device Manager Started (Fixed Diff Mode)");
+    print("CORE: Device Manager Started (Persistent Blacklist Mode)");
+    _loadBlacklist(); // Load saved bad ports on startup
     _startScanning();
     ref.onDispose(() {
       _scanTimer?.cancel();
@@ -68,6 +70,42 @@ class DeviceManager extends _$DeviceManager {
     });
     return [];
   }
+
+  // --- BLACKLIST LOGIC ---
+
+  Future<void> _loadBlacklist() async {
+    final prefs = await SharedPreferences.getInstance();
+    final List<String>? saved = prefs.getStringList('ignored_serial_ports');
+    if (saved != null) {
+      _ignoredPorts.addAll(saved);
+      // print("CORE: Loaded blacklisted ports: $_ignoredPorts");
+    }
+  }
+
+  Future<void> _handlePortFailure(
+    String portName, {
+    bool permanent = false,
+  }) async {
+    // 1. Ignore in memory immediately
+    _ignoredPorts.add(portName);
+
+    // 2. If permanent (Hardware incompatibility), save to disk
+    if (permanent) {
+      print("CORE: Permanently blacklisting $portName (Hardware/Legacy).");
+      final prefs = await SharedPreferences.getInstance();
+      final saved = prefs.getStringList('ignored_serial_ports') ?? [];
+      if (!saved.contains(portName)) {
+        saved.add(portName);
+        await prefs.setStringList('ignored_serial_ports', saved);
+      }
+    } else {
+      print(
+        "CORE: Temporarily ignoring $portName (No Response). Will retry on restart.",
+      );
+    }
+  }
+
+  // --- SCANNING LOGIC ---
 
   void _closeAll() {
     for (final dev in _activeDevices) {
@@ -81,25 +119,23 @@ class DeviceManager extends _$DeviceManager {
       state.where((d) => d.type == DeviceType.sender).firstOrNull;
 
   void _startScanning() {
-    // Check every 2 seconds. Lightweight diff check.
+    // Check every 2 seconds
     _scanTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
       await _checkForPortChanges();
     });
   }
 
   Future<void> _checkForPortChanges() async {
-    // 1. Get Current Snapshot
     final currentPortsList = SerialPort.availablePorts;
     final currentPorts = currentPortsList.toSet();
 
-    // 2. Calculate Diffs
+    // Calculate Diff
     final addedPorts = currentPorts.difference(_lastKnownPorts);
     final removedPorts = _lastKnownPorts.difference(currentPorts);
 
-    // 3. Update Snapshot
     _lastKnownPorts = currentPorts;
 
-    // 4. Handle REMOVED (Unplugged)
+    // Handle Unplug
     if (removedPorts.isNotEmpty) {
       for (final portName in removedPorts) {
         final activeDev = _activeDevices
@@ -109,24 +145,27 @@ class DeviceManager extends _$DeviceManager {
           print("CORE: Device unplugged: $portName");
           await _forceDisconnect(activeDev);
         }
-        // Also clear from blacklist so we can retry if plugged back in
+        // If unplugged, we remove from temporary blacklist so we can retry if replugged
         _ignoredPorts.remove(portName);
       }
       _updateState();
     }
 
-    // 5. Handle ADDED (Plugged In)
+    // Handle Plug In
     if (addedPorts.isNotEmpty) {
       for (final portName in addedPorts) {
-        // A. Filter Legacy/System Ports
-        if (['COM1', 'COM2'].contains(portName)) continue;
+        // A. Filter Legacy Ports (Auto-Blacklist)
+        if (['COM1', 'COM2'].contains(portName)) {
+          _handlePortFailure(portName, permanent: true);
+          continue;
+        }
 
-        // B. Filter Blacklisted Ports
+        // B. Filter Known Bad Ports
         if (_ignoredPorts.contains(portName)) continue;
 
         print("CORE: New port detected: $portName. Connecting...");
 
-        // Give Windows a moment to finish driver setup
+        // Wait for driver stability
         await Future.delayed(const Duration(milliseconds: 500));
 
         _connectAndIdentify(portName);
@@ -137,15 +176,14 @@ class DeviceManager extends _$DeviceManager {
   Future<void> _connectAndIdentify(String portName) async {
     final port = SerialPort(portName);
 
-    // Attempt Open
+    // 1. Attempt Open
     try {
       if (!port.openReadWrite()) {
-        print("CORE: Failed to open new port $portName");
-        _ignoredPorts.add(portName); // Temporary ignore
+        _handlePortFailure(portName, permanent: false);
         return;
       }
     } catch (e) {
-      _ignoredPorts.add(portName);
+      _handlePortFailure(portName, permanent: false);
       return;
     }
 
@@ -158,50 +196,47 @@ class DeviceManager extends _$DeviceManager {
       config.stopBits = 1;
       config.parity = SerialPortParity.none;
 
+      // 2. Attempt Config (Catch Error 87)
       try {
         port.config = config;
       } catch (e) {
-        // Error 87 = Incompatible Hardware -> Permanent Blacklist
-        print("CORE: Port $portName incompatible. Ignoring forever.");
         port.close();
-        _ignoredPorts.add(portName);
+        // This is a hardware mismatch -> Permanent Blacklist
+        _handlePortFailure(portName, permanent: true);
         return;
       }
 
       port.flush();
 
-      // Create Reader
+      // 3. Create Connection
       final reader = SerialPortReader(port, timeout: 0);
 
-      // --- CRITICAL FIX: SINGLE INSTANCE CREATION ---
       final device = ConnectedDevice(
         portName: portName,
         type: DeviceType.unknown,
         port: port,
         reader: reader,
-        subscription: null, // Will assign next
+        subscription: null,
       );
 
-      // Add to list immediately so it's tracked
       _activeDevices.add(device);
 
-      // Start Listening
+      // 4. Listen
       device.subscription = reader.stream.listen(
         (data) {
           final str = String.fromCharCodes(data);
-          // Now checking the SAME object instance
           _handleRawData(device, str);
         },
         onError: (err) {
           if (!err.toString().contains("errno = 0")) {
-            print("CORE: Error on $portName: $err");
+            // print("CORE: Error on $portName: $err");
           }
           _forceDisconnect(device);
         },
         onDone: () => _forceDisconnect(device),
       );
 
-      // Handshake
+      // 5. Handshake
       try {
         port.write(Uint8List.fromList("AWEAR_IDENTIFY\n".codeUnits));
       } catch (e) {
@@ -209,28 +244,26 @@ class DeviceManager extends _$DeviceManager {
         return;
       }
 
-      // TIMEOUT CHECK
-      // If still Unknown after 4 seconds, kill it.
+      // 6. Timeout Check
       Future.delayed(const Duration(seconds: 4), () {
-        // We check the device object directly since it's the same instance
         if (_activeDevices.contains(device) &&
             device.type == DeviceType.unknown) {
-          print("CORE: $portName did not identify as AWEAR. Closing.");
+          print("CORE: $portName did not identify. Closing.");
           _forceDisconnect(device);
-          _ignoredPorts.add(portName); // Prevent re-scanning this session
+          // Temporary blacklist (maybe it's just a different device)
+          _handlePortFailure(portName, permanent: false);
         }
       });
     } catch (e) {
-      print("CORE: Setup crashed for $portName");
       try {
         port.close();
       } catch (_) {}
-      _ignoredPorts.add(portName);
+      _handlePortFailure(portName, permanent: false);
     }
   }
 
   void _handleRawData(ConnectedDevice device, String chunk) {
-    // 1. IDENTITY CHECK (Runs until type is confirmed)
+    // 1. IDENTITY CHECK
     if (device.type == DeviceType.unknown) {
       if (chunk.contains("AWEAR_RECEIVER")) {
         print("CORE: SUCCESS! Recognized RECEIVER on ${device.portName}");
@@ -240,16 +273,14 @@ class DeviceManager extends _$DeviceManager {
         print("CORE: SUCCESS! Recognized SENDER on ${device.portName}");
         device.type = DeviceType.sender;
         _updateState();
-      }
-      // Implicit Check (Fail-safe)
-      else if (chunk.contains('"sender":') && chunk.contains('"rssi":')) {
+      } else if (chunk.contains('"sender":') && chunk.contains('"rssi":')) {
         print("CORE: Implicitly recognized RECEIVER on ${device.portName}");
         device.type = DeviceType.receiver;
         _updateState();
       }
     }
 
-    // 2. ROUTING (Runs continuously)
+    // 2. ROUTING
     if (device.type == DeviceType.receiver) {
       _parseLines(chunk);
     } else if (device.type == DeviceType.sender) {
@@ -261,6 +292,7 @@ class DeviceManager extends _$DeviceManager {
 
   Future<void> _forceDisconnect(ConnectedDevice dev) async {
     _activeDevices.remove(dev);
+
     if (dev.type != DeviceType.unknown) {
       _updateState();
     }
@@ -294,7 +326,7 @@ class DeviceManager extends _$DeviceManager {
   void _attemptJsonParse(String jsonString) {
     try {
       final json = jsonDecode(jsonString);
-      if (json.containsKey('device')) return; // Skip status messages
+      if (json.containsKey('device')) return;
 
       final packet = SerialPacket.fromJson(json);
 

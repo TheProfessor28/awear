@@ -5,6 +5,7 @@ import 'package:gap/gap.dart';
 
 import '../../dashboard/providers/selection_providers.dart';
 import '../../users/providers/user_provider.dart';
+import '../../vitals/providers/live_data_provider.dart';
 
 class VitalsDetailWidget extends ConsumerWidget {
   const VitalsDetailWidget({super.key});
@@ -15,16 +16,28 @@ class VitalsDetailWidget extends ConsumerWidget {
     final selectedVital = ref.watch(selectedVitalProvider);
     final userList = ref.watch(userNotifierProvider).valueOrNull ?? [];
 
-    // 1. Safety Checks
+    // 1. Safety Checks FIRST
     if (selectedId == null) return const Center(child: Text("Select a User"));
     if (selectedVital == null) {
       return const Center(child: Text("Select a Vital"));
     }
 
-    final user = userList.where((u) => u.id == selectedId).firstOrNull;
-    if (user == null) return const SizedBox(); // Should not happen
+    // 2. Watch Live Data (Now safe because selectedId is not null)
+    final liveDataAsync = ref.watch(liveVitalStreamProvider(selectedId));
 
-    // 2. Determine Color Scheme based on Vital
+    // Optional: You can debug print here to see if data arrives
+    liveDataAsync.when(
+      data: (packet) {
+        // Debug print or simple state update
+      },
+      loading: () {}, // No-op
+      error: (err, stack) {}, // No-op
+    );
+
+    final user = userList.where((u) => u.id == selectedId).firstOrNull;
+    if (user == null) return const SizedBox();
+
+    // 3. Determine Color Scheme based on Vital
     Color color;
     switch (selectedVital) {
       case 'Heart Rate':
@@ -66,15 +79,12 @@ class VitalsDetailWidget extends ConsumerWidget {
                   ),
                 ],
               ),
-              IconButton(
-                onPressed: () {},
-                icon: const Icon(Icons.more_vert),
-              ), // For "Delete User" later
+              IconButton(onPressed: () {}, icon: const Icon(Icons.more_vert)),
             ],
           ),
           const Gap(24),
 
-          // --- Graph Section (Top 1/3) ---
+          // --- Graph Section ---
           SizedBox(
             height: 200,
             child: Card(
@@ -86,7 +96,6 @@ class VitalsDetailWidget extends ConsumerWidget {
               color: Colors.white,
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
-                // Using FL Chart here
                 child: LineChart(
                   LineChartData(
                     gridData: const FlGridData(show: false),
@@ -108,7 +117,7 @@ class VitalsDetailWidget extends ConsumerWidget {
                         dotData: const FlDotData(show: false),
                         belowBarData: BarAreaData(
                           show: true,
-                          color: color..withValues(alpha: 0.2),
+                          color: color.withValues(alpha: 0.2),
                         ),
                       ),
                     ],
@@ -119,7 +128,7 @@ class VitalsDetailWidget extends ConsumerWidget {
           ),
           const Gap(24),
 
-          // --- History List (Bottom 2/3) ---
+          // --- History List ---
           const Text(
             "Recent Records",
             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
@@ -128,12 +137,12 @@ class VitalsDetailWidget extends ConsumerWidget {
           Expanded(
             child: ListView.separated(
               itemCount: 10, // Dummy count
-              separatorBuilder: (_, __) => const Divider(height: 1),
+              separatorBuilder: (_, _) => const Divider(height: 1),
               itemBuilder: (context, index) {
                 return ListTile(
                   dense: true,
                   contentPadding: EdgeInsets.zero,
-                  title: Text("Value: ${90 + index}"), // Dummy value
+                  title: Text("Value: ${90 + index}"),
                   subtitle: Text("2025-01-05 10:${30 + index} AM"),
                   leading: Icon(Icons.circle, size: 12, color: color),
                 );

@@ -6,12 +6,12 @@ part of 'sender_monitor_provider.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$senderMonitorHash() => r'e9fc47522b1436f2dce6f86c7a3933d59da6066b';
+String _$senderMonitorHash() => r'5653f69dc8e2351a215434cc15a1dd6c78525bab';
 
 /// See also [SenderMonitor].
 @ProviderFor(SenderMonitor)
 final senderMonitorProvider =
-    AutoDisposeNotifierProvider<SenderMonitor, List<SenderStatus>>.internal(
+    NotifierProvider<SenderMonitor, List<SenderStatus>>.internal(
   SenderMonitor.new,
   name: r'senderMonitorProvider',
   debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
@@ -21,6 +21,6 @@ final senderMonitorProvider =
   allTransitiveDependencies: null,
 );
 
-typedef _$SenderMonitor = AutoDisposeNotifier<List<SenderStatus>>;
+typedef _$SenderMonitor = Notifier<List<SenderStatus>>;
 // ignore_for_file: type=lint
 // ignore_for_file: subtype_of_sealed_class, invalid_use_of_internal_member, invalid_use_of_visible_for_testing_member
