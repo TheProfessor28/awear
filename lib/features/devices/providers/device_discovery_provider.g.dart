@@ -22,12 +22,12 @@ final pairingStatusProvider =
 );
 
 typedef _$PairingStatus = AutoDisposeNotifier<String?>;
-String _$deviceManagerHash() => r'009afc4332ca818ef61430c5c3d85427ad2555d1';
+String _$deviceManagerHash() => r'39077d7de6d240edb37e72e7bbbdd289e48384f8';
 
 /// See also [DeviceManager].
 @ProviderFor(DeviceManager)
 final deviceManagerProvider =
-    NotifierProvider<DeviceManager, List<ConnectedDevice>>.internal(
+    AsyncNotifierProvider<DeviceManager, List<ConnectedDevice>>.internal(
   DeviceManager.new,
   name: r'deviceManagerProvider',
   debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
@@ -37,6 +37,6 @@ final deviceManagerProvider =
   allTransitiveDependencies: null,
 );
 
-typedef _$DeviceManager = Notifier<List<ConnectedDevice>>;
+typedef _$DeviceManager = AsyncNotifier<List<ConnectedDevice>>;
 // ignore_for_file: type=lint
 // ignore_for_file: subtype_of_sealed_class, invalid_use_of_internal_member, invalid_use_of_visible_for_testing_member

@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_libserialport/flutter_libserialport.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -51,8 +50,6 @@ class DeviceManager extends _$DeviceManager {
 
   // STATE
   Set<String> _lastKnownPorts = {};
-
-  // BLACKLIST (The "Anti-Lag" Fix)
   final Set<String> _ignoredPorts = {};
 
   // BUFFER & METRICS
@@ -60,16 +57,37 @@ class DeviceManager extends _$DeviceManager {
   int _packetsReceived = 0;
 
   @override
-  List<ConnectedDevice> build() {
-    print("CORE: Device Manager Started (Persistent Blacklist Mode)");
-    _loadBlacklist(); // Load saved bad ports on startup
+  Future<List<ConnectedDevice>> build() async {
+    print("CORE: Device Manager Started (Async Init)");
+
+    // Allow the Splash Screen to render
+    await Future.delayed(const Duration(milliseconds: 3000));
+
+    // 1. Load Blacklist
+    await _loadBlacklist();
+
+    // 2. Perform Initial Scan & Wait for it
+    await _checkForPortChanges(notify: false);
+
+    // 3. Start Periodic Timer for future checks
     _startScanning();
+
     ref.onDispose(() {
       _scanTimer?.cancel();
       _closeAll();
     });
-    return [];
+
+    // 4. Return initial list
+    return [..._activeDevices];
   }
+
+  // --- PUBLIC HELPERS ---
+  // FIXED: Access state.value because state is now AsyncValue
+  ConnectedDevice? get receiver =>
+      state.value?.where((d) => d.type == DeviceType.receiver).firstOrNull;
+
+  ConnectedDevice? get sender =>
+      state.value?.where((d) => d.type == DeviceType.sender).firstOrNull;
 
   // --- BLACKLIST LOGIC ---
 
@@ -78,7 +96,6 @@ class DeviceManager extends _$DeviceManager {
     final List<String>? saved = prefs.getStringList('ignored_serial_ports');
     if (saved != null) {
       _ignoredPorts.addAll(saved);
-      // print("CORE: Loaded blacklisted ports: $_ignoredPorts");
     }
   }
 
@@ -86,22 +103,15 @@ class DeviceManager extends _$DeviceManager {
     String portName, {
     bool permanent = false,
   }) async {
-    // 1. Ignore in memory immediately
     _ignoredPorts.add(portName);
-
-    // 2. If permanent (Hardware incompatibility), save to disk
     if (permanent) {
-      print("CORE: Permanently blacklisting $portName (Hardware/Legacy).");
+      print("CORE: Permanently blacklisting $portName.");
       final prefs = await SharedPreferences.getInstance();
       final saved = prefs.getStringList('ignored_serial_ports') ?? [];
       if (!saved.contains(portName)) {
         saved.add(portName);
         await prefs.setStringList('ignored_serial_ports', saved);
       }
-    } else {
-      print(
-        "CORE: Temporarily ignoring $portName (No Response). Will retry on restart.",
-      );
     }
   }
 
@@ -113,23 +123,22 @@ class DeviceManager extends _$DeviceManager {
     }
   }
 
-  ConnectedDevice? get receiver =>
-      state.where((d) => d.type == DeviceType.receiver).firstOrNull;
-  ConnectedDevice? get sender =>
-      state.where((d) => d.type == DeviceType.sender).firstOrNull;
+  // Helper getters need to handle AsyncValue now
+  ConnectedDevice? get currentReceiver =>
+      state.value?.where((d) => d.type == DeviceType.receiver).firstOrNull;
+  ConnectedDevice? get currentSender =>
+      state.value?.where((d) => d.type == DeviceType.sender).firstOrNull;
 
   void _startScanning() {
-    // Check every 2 seconds
     _scanTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
-      await _checkForPortChanges();
+      await _checkForPortChanges(notify: true);
     });
   }
 
-  Future<void> _checkForPortChanges() async {
+  Future<void> _checkForPortChanges({bool notify = true}) async {
     final currentPortsList = SerialPort.availablePorts;
     final currentPorts = currentPortsList.toSet();
 
-    // Calculate Diff
     final addedPorts = currentPorts.difference(_lastKnownPorts);
     final removedPorts = _lastKnownPorts.difference(currentPorts);
 
@@ -142,34 +151,30 @@ class DeviceManager extends _$DeviceManager {
             .where((d) => d.portName == portName)
             .firstOrNull;
         if (activeDev != null) {
-          print("CORE: Device unplugged: $portName");
           await _forceDisconnect(activeDev);
         }
-        // If unplugged, we remove from temporary blacklist so we can retry if replugged
         _ignoredPorts.remove(portName);
       }
-      _updateState();
+      if (notify) _updateState();
     }
 
     // Handle Plug In
     if (addedPorts.isNotEmpty) {
       for (final portName in addedPorts) {
-        // A. Filter Legacy Ports (Auto-Blacklist)
         if (['COM1', 'COM2'].contains(portName)) {
           _handlePortFailure(portName, permanent: true);
           continue;
         }
-
-        // B. Filter Known Bad Ports
         if (_ignoredPorts.contains(portName)) continue;
 
         print("CORE: New port detected: $portName. Connecting...");
 
-        // Wait for driver stability
-        await Future.delayed(const Duration(milliseconds: 500));
-
+        // Note: We don't await the full handshake here to avoid blocking UI for too long,
+        // but we initiate the connection.
         _connectAndIdentify(portName);
       }
+      // Note: We don't update state immediately here because _connectAndIdentify
+      // is async and will update state when it succeeds/fails.
     }
   }
 
@@ -220,6 +225,7 @@ class DeviceManager extends _$DeviceManager {
       );
 
       _activeDevices.add(device);
+      _updateState(); // Notify that we have a (tentative) device
 
       // 4. Listen
       device.subscription = reader.stream.listen(
@@ -229,7 +235,7 @@ class DeviceManager extends _$DeviceManager {
         },
         onError: (err) {
           if (!err.toString().contains("errno = 0")) {
-            // print("CORE: Error on $portName: $err");
+            print("CORE: Error on $portName: $err");
           }
           _forceDisconnect(device);
         },
@@ -292,11 +298,7 @@ class DeviceManager extends _$DeviceManager {
 
   Future<void> _forceDisconnect(ConnectedDevice dev) async {
     _activeDevices.remove(dev);
-
-    if (dev.type != DeviceType.unknown) {
-      _updateState();
-    }
-
+    _updateState();
     try {
       await dev.subscription?.cancel();
       dev.reader.close();
@@ -305,7 +307,7 @@ class DeviceManager extends _$DeviceManager {
   }
 
   void _updateState() {
-    state = [..._activeDevices];
+    state = AsyncValue.data([..._activeDevices]);
   }
 
   void _parseLines(String chunk) {
@@ -342,8 +344,8 @@ class DeviceManager extends _$DeviceManager {
   }
 
   Future<void> pairSender(String receiverMac) async {
-    final senderDev = state
-        .where((d) => d.type == DeviceType.sender)
+    final senderDev = state.value
+        ?.where((d) => d.type == DeviceType.sender)
         .firstOrNull;
     if (senderDev != null) {
       final cmd = "PAIR:$receiverMac\n";

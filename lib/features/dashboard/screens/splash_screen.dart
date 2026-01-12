@@ -34,17 +34,19 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   }
 
   Future<void> _initApp() async {
-    // 1. Force DeviceManager to start scanning immediately
-    // Reading it initializes the provider's build() method
-    ref.read(deviceManagerProvider);
+    // 1. Wait for BOTH the minimum timer AND the DeviceManager initialization
+    // using Future.wait.
+    await Future.wait([
+      // Minimum branding time (3 seconds)
+      Future.delayed(const Duration(seconds: 3)),
 
-    // 2. Wait for a minimum time (for branding effect & initial scan lag)
-    // 3 seconds gives the blacklist time to load and the first scan to run
-    await Future.delayed(const Duration(seconds: 3));
+      // Wait for DeviceManager to finish build() (Scan + Blacklist load)
+      ref.read(deviceManagerProvider.future),
+    ]);
 
     if (!mounted) return;
 
-    // 3. Navigate to Dashboard with a Fade Transition
+    // 2. Navigate
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
         pageBuilder: (_, _, _) => const AppShell(),
@@ -94,8 +96,6 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                 ),
               ),
               const SizedBox(height: 30),
-
-              // APP TITLE
               Text(
                 "AWEAR",
                 style: GoogleFonts.montserrat(
@@ -105,8 +105,6 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                   color: Colors.blueGrey[900],
                 ),
               ),
-
-              // TAGLINE
               const SizedBox(height: 10),
               Text(
                 "AWARENESS YOU CAN WEAR, BECAUSE WE CARE",
@@ -117,10 +115,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                   color: Colors.blueGrey[400],
                 ),
               ),
-
               const SizedBox(height: 60),
-
-              // LOADING INDICATOR
               const SizedBox(
                 width: 30,
                 height: 30,

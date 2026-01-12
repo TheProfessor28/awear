@@ -9,7 +9,9 @@ class PairDevicesScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final devices = ref.watch(deviceManagerProvider);
+    final devicesAsync = ref.watch(deviceManagerProvider);
+    final devices = devicesAsync.valueOrNull ?? [];
+
     final receiver = devices
         .where((d) => d.type == DeviceType.receiver)
         .firstOrNull;
