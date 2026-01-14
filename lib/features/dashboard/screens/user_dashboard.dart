@@ -141,14 +141,14 @@ class UserDashboard extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color..withValues(alpha: 0.1),
+        color: color.withValues(alpha: 1),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: color..withValues(alpha: 0.5)),
       ),
       child: Text(
         text,
         style: TextStyle(
-          color: color,
+          color: Colors.white,
           fontWeight: FontWeight.bold,
           fontSize: 12,
         ),

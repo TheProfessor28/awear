@@ -235,7 +235,12 @@ class _UserRegistrationDialogState
         : <String>[];
 
     return AlertDialog(
-      title: Text(isEditing ? "Edit User" : "Register User"),
+      title: Text(
+        isEditing ? "Edit User" : "Register User",
+        style: Theme.of(
+          context,
+        ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w500),
+      ),
       content: SizedBox(
         width: 600,
         child: SingleChildScrollView(

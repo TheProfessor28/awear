@@ -32,7 +32,9 @@ class UserInformationWidget extends ConsumerWidget {
             children: [
               Text(
                 "User Information",
-                style: Theme.of(context).textTheme.headlineSmall,
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w500,
+                ),
               ),
               // --- UPDATED MENU BUTTON ---
               PopupMenuButton<String>(
@@ -49,7 +51,10 @@ class UserInformationWidget extends ConsumerWidget {
                     showDialog(
                       context: context,
                       builder: (ctx) => AlertDialog(
-                        title: const Text("Delete User"),
+                        title: const Text(
+                          "Delete User",
+                          style: TextStyle(fontWeight: FontWeight.w500),
+                        ),
                         content: Text(
                           "Are you sure you want to delete ${user.firstName} ${user.lastName}?",
                         ),
