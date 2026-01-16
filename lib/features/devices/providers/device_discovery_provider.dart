@@ -58,7 +58,7 @@ class DeviceManager extends _$DeviceManager {
 
   @override
   Future<List<ConnectedDevice>> build() async {
-    print("CORE: Device Manager Started (Async Init)");
+    // print("CORE: Device Manager Started (Async Init)");
 
     // Allow the Splash Screen to render
     await Future.delayed(const Duration(milliseconds: 3000));
@@ -105,7 +105,7 @@ class DeviceManager extends _$DeviceManager {
   }) async {
     _ignoredPorts.add(portName);
     if (permanent) {
-      print("CORE: Permanently blacklisting $portName.");
+      // print("CORE: Permanently blacklisting $portName.");
       final prefs = await SharedPreferences.getInstance();
       final saved = prefs.getStringList('ignored_serial_ports') ?? [];
       if (!saved.contains(portName)) {
@@ -167,7 +167,7 @@ class DeviceManager extends _$DeviceManager {
         }
         if (_ignoredPorts.contains(portName)) continue;
 
-        print("CORE: New port detected: $portName. Connecting...");
+        // print("CORE: New port detected: $portName. Connecting...");
 
         // Note: We don't await the full handshake here to avoid blocking UI for too long,
         // but we initiate the connection.
@@ -235,7 +235,7 @@ class DeviceManager extends _$DeviceManager {
         },
         onError: (err) {
           if (!err.toString().contains("errno = 0")) {
-            print("CORE: Error on $portName: $err");
+            // print("CORE: Error on $portName: $err");
           }
           _forceDisconnect(device);
         },
@@ -254,7 +254,7 @@ class DeviceManager extends _$DeviceManager {
       Future.delayed(const Duration(seconds: 4), () {
         if (_activeDevices.contains(device) &&
             device.type == DeviceType.unknown) {
-          print("CORE: $portName did not identify. Closing.");
+          // print("CORE: $portName did not identify. Closing.");
           _forceDisconnect(device);
           // Temporary blacklist (maybe it's just a different device)
           _handlePortFailure(portName, permanent: false);
@@ -272,15 +272,15 @@ class DeviceManager extends _$DeviceManager {
     // 1. IDENTITY CHECK
     if (device.type == DeviceType.unknown) {
       if (chunk.contains("AWEAR_RECEIVER")) {
-        print("CORE: SUCCESS! Recognized RECEIVER on ${device.portName}");
+        // print("CORE: SUCCESS! Recognized RECEIVER on ${device.portName}");
         device.type = DeviceType.receiver;
         _updateState();
       } else if (chunk.contains("AWEAR_SENDER")) {
-        print("CORE: SUCCESS! Recognized SENDER on ${device.portName}");
+        // print("CORE: SUCCESS! Recognized SENDER on ${device.portName}");
         device.type = DeviceType.sender;
         _updateState();
       } else if (chunk.contains('"sender":') && chunk.contains('"rssi":')) {
-        print("CORE: Implicitly recognized RECEIVER on ${device.portName}");
+        // print("CORE: Implicitly recognized RECEIVER on ${device.portName}");
         device.type = DeviceType.receiver;
         _updateState();
       }
@@ -303,7 +303,9 @@ class DeviceManager extends _$DeviceManager {
       await dev.subscription?.cancel();
       dev.reader.close();
       if (dev.port.isOpen) dev.port.close();
-    } catch (e) {}
+    } catch (e) {
+      // Ignore cleanup errors. The device might already be disconnected or the port closed.
+    }
   }
 
   void _updateState() {
@@ -335,12 +337,15 @@ class DeviceManager extends _$DeviceManager {
       ref.read(packetStreamProvider.notifier).emit(packet);
 
       _packetsReceived++;
-      if (_packetsReceived % 50 == 0) {
-        print(
-          "CORE STATUS: $_packetsReceived packets. HR: ${packet.heartRate} | RSSI: ${packet.rssi}",
-        );
-      }
-    } catch (e) {}
+      // if (_packetsReceived % 50 == 0) {
+      //   print(
+      //     "CORE STATUS: $_packetsReceived packets. HR: ${packet.heartRate} | RSSI: ${packet.rssi}",
+      //   );
+      // }
+    } catch (e) {
+      // Ignore malformed JSON packets.
+      // This happens frequently with serial data streams.
+    }
   }
 
   Future<void> pairSender(String receiverMac) async {

@@ -47,7 +47,7 @@
 
 // ================= CONFIGURATION =================
 // MAC Address of your Receiver
-uint8_t receiverAddress[6] = {0x08, 0x92, 0x72, 0x85, 0x83, 0x78}; // {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}; Default to Broadcast (Placeholders)
+uint8_t receiverAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}; // {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}; Default to Broadcast (Placeholders)
 
 #define WIFI_CHANNEL 1
 #define I2C_SDA_PIN 8
@@ -68,12 +68,12 @@ uint8_t receiverAddress[6] = {0x08, 0x92, 0x72, 0x85, 0x83, 0x78}; // {0xFF, 0xF
 // 1. MAX30102 LED Power
 // 0x1F (Low) for Finger to avoid saturation.
 // 0x7F (High) for Wrist to penetrate thicker skin.
-#define SENSOR_LED_POWER 0x7F
+#define SENSOR_LED_POWER 0x1F
 
 // 2. Respiration Sensitivity (Baseline Wander)
 // Finger: 10.0 (Clean signal, small waves)
 // Wrist:  50.0 (Noisy signal, needs big waves to count)
-#define RR_MIN_SIGNAL_RANGE 20.0 
+#define RR_MIN_SIGNAL_RANGE 10.0 
 
 // 3. Respiration Peak Threshold
 // Finger: 0.15 (15% of wave height)
@@ -155,7 +155,7 @@ void OnDataSent(const esp_now_send_info_t * info, esp_now_send_status_t status) 
 // ================= MAIN CYCLE FLOW =================
 void setup() {
 
-  Serial.begin(115200);
+  Serial.begin(921600);
 
   // We wait up to 3 seconds for the computer to connect.
   // If no computer connects (Battery Mode), we move on.
@@ -677,7 +677,11 @@ void transmitData() {
   }
 
   esp_err_t result = esp_now_send(receiverAddress, (uint8_t *) &outgoingData, sizeof(outgoingData));
-  
+  delay(10);
+  esp_now_send(receiverAddress, (uint8_t *) &outgoingData, sizeof(outgoingData));
+  delay(10);
+  esp_now_send(receiverAddress, (uint8_t *) &outgoingData, sizeof(outgoingData));
+
   if (result == ESP_OK) {
     totalPacketsSent++;
     digitalWrite(LED_PIN, LOW); delay(50); digitalWrite(LED_PIN, HIGH); // BLINK SUCCESS (Short Flash)
@@ -687,7 +691,7 @@ void transmitData() {
     digitalWrite(LED_PIN, LOW); delay(200); digitalWrite(LED_PIN, HIGH); // BLINK FAIL (Long Flash)
   }
 
-  delay(200); // Wait for ACK callback before sleep
+  delay(1000); // Wait for ACK callback before sleep
 }
 
 // ================= MODULE 8: DEEP SLEEP =================
