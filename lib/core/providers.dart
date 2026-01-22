@@ -4,6 +4,7 @@ import 'package:isar/isar.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
+import 'services/sync_service.dart';
 import 'database/user_entity.dart';
 import 'database/device_entity.dart';
 import 'database/vital_log_entity.dart';
@@ -40,4 +41,11 @@ SerialServiceContract serialService(Ref ref) {
   } else {
     return SerialServiceWindows();
   }
+}
+
+/// 3. SYNC SERVICE PROVIDER
+/// This lets us sync to Firebase.
+@Riverpod(keepAlive: true)
+SyncService syncService(Ref ref) {
+  return SyncService();
 }

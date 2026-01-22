@@ -42,5 +42,23 @@ final serialServiceProvider = Provider<SerialServiceContract>.internal(
 );
 
 typedef SerialServiceRef = Ref<SerialServiceContract>;
+String _$syncServiceHash() => r'693d115d028caa441308df23cd1076bbbce29b04';
+
+/// 3. SYNC SERVICE PROVIDER
+/// This lets us sync to Firebase.
+///
+/// Copied from [syncService].
+@ProviderFor(syncService)
+final syncServiceProvider = Provider<SyncService>.internal(
+  syncService,
+  name: r'syncServiceProvider',
+  debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
+      ? null
+      : _$syncServiceHash,
+  dependencies: null,
+  allTransitiveDependencies: null,
+);
+
+typedef SyncServiceRef = Ref<SyncService>;
 // ignore_for_file: type=lint
 // ignore_for_file: subtype_of_sealed_class, invalid_use_of_internal_member, invalid_use_of_visible_for_testing_member
