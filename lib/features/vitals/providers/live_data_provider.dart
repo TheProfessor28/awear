@@ -12,7 +12,7 @@ import '../../users/providers/user_provider.dart';
 
 part 'live_data_provider.g.dart';
 
-// --- DASHBOARD HELPER (User B Fix) ---
+// --- DASHBOARD HELPER---
 @riverpod
 Stream<SerialPacket> selectedUserLiveVitals(SelectedUserLiveVitalsRef ref) {
   final selectedId = ref.watch(selectedUserIdProvider);
@@ -20,8 +20,10 @@ Stream<SerialPacket> selectedUserLiveVitals(SelectedUserLiveVitalsRef ref) {
 
   // Check pairing to ensure we don't show ghost data
   final userAsync = ref.watch(userNotifierProvider);
-  final user = userAsync.valueOrNull?.where((u) => u.id == selectedId).firstOrNull;
-  
+  final user = userAsync.valueOrNull
+      ?.where((u) => u.id == selectedId)
+      .firstOrNull;
+
   if (user == null || user.pairedDeviceMacAddress == null) {
     return const Stream.empty();
   }
@@ -38,7 +40,7 @@ Stream<List<VitalLogEntity>> vitalHistory(
 ) async* {
   // Await the FUTURE to ensure Isar is ready before querying
   final isar = await ref.watch(isarProvider.future);
-  
+
   yield* isar.vitalLogEntitys
       .filter()
       .userIdEqualTo(userId)
@@ -63,8 +65,9 @@ Stream<SerialPacket> liveVitalStream(
   }
   final targetMac = user.pairedDeviceMacAddress!;
 
-  // 2. Wait for Isar to be ready
+  // 2. Wait for Isar AND Get Sync Service
   final isar = await ref.watch(isarProvider.future);
+  final syncService = ref.read(syncServiceProvider); // [NEW] Get Sync Service
 
   // 3. Fetch initial history (Optional: show last known data)
   final lastLog = await isar.vitalLogEntitys
@@ -90,31 +93,34 @@ Stream<SerialPacket> liveVitalStream(
   // 4. Start Listening
   final packetStream = ref.watch(packetStreamProvider.notifier).stream;
 
-  // [NEW] Cache the actual PACKET data, not just the timestamp
+  // Cache variables for Local Saving
   SerialPacket? _lastSavedPacket;
   DateTime? _lastSavedTime;
 
+  // [NEW] Cache variable for Cloud Throttling
+  DateTime? _lastCloudUploadTime;
+
   await for (final packet in packetStream) {
     if (packet.sender == targetMac) {
-      
       bool isDuplicate = false;
 
-      // [LOGIC] Smart De-duplication
+      // [LOGIC] Smart De-duplication (Local)
       if (_lastSavedPacket != null && _lastSavedTime != null) {
-        final msSinceLastSave = DateTime.now().difference(_lastSavedTime!).inMilliseconds;
-        
+        final msSinceLastSave = DateTime.now()
+            .difference(_lastSavedTime!)
+            .inMilliseconds;
+
         // If the packet arrived within 1 second of the last one...
         if (msSinceLastSave < 1000) {
-           // ...AND the critical values are EXACTLY the same...
-           if (packet.id == _lastSavedPacket!.id && // vital if you use IDs
-               packet.heartRate == _lastSavedPacket!.heartRate &&
-               packet.oxygen == _lastSavedPacket!.oxygen &&
-               packet.stress == _lastSavedPacket!.stress &&
-               packet.temperature == _lastSavedPacket!.temperature) {
-             
-             // ...then it is a Redundant Copy.
-             isDuplicate = true; 
-           }
+          // ...AND the critical values are EXACTLY the same...
+          if (packet.id == _lastSavedPacket!.id && // vital if you use IDs
+              packet.heartRate == _lastSavedPacket!.heartRate &&
+              packet.oxygen == _lastSavedPacket!.oxygen &&
+              packet.stress == _lastSavedPacket!.stress &&
+              packet.temperature == _lastSavedPacket!.temperature) {
+            // ...then it is a Redundant Copy.
+            isDuplicate = true;
+          }
         }
       }
 
@@ -122,9 +128,23 @@ Stream<SerialPacket> liveVitalStream(
         // Update the Cache
         _lastSavedPacket = packet;
         _lastSavedTime = DateTime.now();
-        
-        // Save to DB
+
+        // A. Save to Local DB (Isar)
         await _saveToHistory(isar, packet, userId);
+
+        // B. [NEW] Upload to Cloud (Throttled)
+        // Only upload if 60 seconds have passed since the last upload
+        final now = DateTime.now();
+        if (_lastCloudUploadTime == null ||
+            now.difference(_lastCloudUploadTime!).inSeconds >= 60) {
+          _lastCloudUploadTime = now;
+
+          // Use userId as the document ID for Firestore
+          syncService.uploadVital(userId.toString(), packet);
+
+          // Optional debug log
+          // print("CLOUD: Uploaded snapshot for User $userId");
+        }
       }
 
       // ALWAYS yield to UI (so the graph/numbers feel responsive)
@@ -134,11 +154,7 @@ Stream<SerialPacket> liveVitalStream(
 }
 
 // [FIX] Accept 'Isar' as an argument so we don't have to look it up again
-Future<void> _saveToHistory(
-  Isar isar,
-  SerialPacket packet,
-  int userId,
-) async {
+Future<void> _saveToHistory(Isar isar, SerialPacket packet, int userId) async {
   try {
     // Filter out invalid/empty packets
     if ((packet.heartRate ?? 0) <= 0 && (packet.oxygen ?? 0) <= 0) {
@@ -158,10 +174,9 @@ Future<void> _saveToHistory(
     await isar.writeTxn(() async {
       await isar.vitalLogEntitys.put(log);
     });
-    
+
     // Uncomment this if you want to see confirmation in the console
     // debugPrint("SAVED: HR=${packet.heartRate} for User $userId");
-
   } catch (e, stack) {
     debugPrint("CRITICAL DB ERROR: $e");
     debugPrint(stack.toString());

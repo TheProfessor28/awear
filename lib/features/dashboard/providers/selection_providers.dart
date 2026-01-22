@@ -30,3 +30,17 @@ class IsPairingUser extends _$IsPairingUser {
 
   void set(bool value) => state = value;
 }
+
+// --- CHAT FEATURE PROVIDER ---
+
+// Enum for switching Column 3 between Vitals and Chat
+enum UserDetailView { vitals, chat }
+
+// Tracks the view mode for the User Details column
+@riverpod
+class UserDetailViewMode extends _$UserDetailViewMode {
+  @override
+  UserDetailView build() => UserDetailView.vitals;
+
+  void set(UserDetailView view) => state = view;
+}

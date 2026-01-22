@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "19722495711",
+    "project_id": "awear-system",
+    "storage_bucket": "awear-system.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:19722495711:android:a2494ccc3099e1c14cab6a",
+        "android_client_info": {
+          "package_name": "com.awear.awear"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC0S_V032D4QuoLU1r3M782reKnufVXwhc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

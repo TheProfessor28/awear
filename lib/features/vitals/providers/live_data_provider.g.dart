@@ -6,6 +6,23 @@ part of 'live_data_provider.dart';
 // RiverpodGenerator
 // **************************************************************************
 
+String _$selectedUserLiveVitalsHash() =>
+    r'ca5a312c9b9bcaa7114ade6cde62f6d117b42550';
+
+/// See also [selectedUserLiveVitals].
+@ProviderFor(selectedUserLiveVitals)
+final selectedUserLiveVitalsProvider =
+    AutoDisposeStreamProvider<SerialPacket>.internal(
+  selectedUserLiveVitals,
+  name: r'selectedUserLiveVitalsProvider',
+  debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
+      ? null
+      : _$selectedUserLiveVitalsHash,
+  dependencies: null,
+  allTransitiveDependencies: null,
+);
+
+typedef SelectedUserLiveVitalsRef = AutoDisposeStreamProviderRef<SerialPacket>;
 String _$vitalHistoryHash() => r'c1dc81c28758d86e6dbf417365da916249c3ab87';
 
 /// Copied from Dart SDK
@@ -157,24 +174,7 @@ class _VitalHistoryProviderElement
   int get userId => (origin as VitalHistoryProvider).userId;
 }
 
-String _$selectedUserLiveVitalsHash() =>
-    r'ca5a312c9b9bcaa7114ade6cde62f6d117b42550';
-
-/// See also [selectedUserLiveVitals].
-@ProviderFor(selectedUserLiveVitals)
-final selectedUserLiveVitalsProvider =
-    AutoDisposeStreamProvider<SerialPacket>.internal(
-  selectedUserLiveVitals,
-  name: r'selectedUserLiveVitalsProvider',
-  debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
-      ? null
-      : _$selectedUserLiveVitalsHash,
-  dependencies: null,
-  allTransitiveDependencies: null,
-);
-
-typedef SelectedUserLiveVitalsRef = AutoDisposeStreamProviderRef<SerialPacket>;
-String _$liveVitalStreamHash() => r'7e44d0b0eb71455cba17b2a15799983f4b600e4a';
+String _$liveVitalStreamHash() => r'515782af5c7847799731b4275e8da6536a8d4d98';
 
 /// See also [liveVitalStream].
 @ProviderFor(liveVitalStream)

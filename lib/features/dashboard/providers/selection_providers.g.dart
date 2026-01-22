@@ -54,5 +54,22 @@ final isPairingUserProvider =
 );
 
 typedef _$IsPairingUser = AutoDisposeNotifier<bool>;
+String _$userDetailViewModeHash() =>
+    r'4aaa371e454bfd2f46c8bf275b062e1e48b2a5dc';
+
+/// See also [UserDetailViewMode].
+@ProviderFor(UserDetailViewMode)
+final userDetailViewModeProvider =
+    AutoDisposeNotifierProvider<UserDetailViewMode, UserDetailView>.internal(
+  UserDetailViewMode.new,
+  name: r'userDetailViewModeProvider',
+  debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
+      ? null
+      : _$userDetailViewModeHash,
+  dependencies: null,
+  allTransitiveDependencies: null,
+);
+
+typedef _$UserDetailViewMode = AutoDisposeNotifier<UserDetailView>;
 // ignore_for_file: type=lint
 // ignore_for_file: subtype_of_sealed_class, invalid_use_of_internal_member, invalid_use_of_visible_for_testing_member

@@ -65,7 +65,7 @@ class UserDashboard extends ConsumerWidget {
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               const Gap(16),
-              // FIX: We now pass 'ref' and 'selectedVital' to the helper
+
               Expanded(
                 child: _buildVitalsGrid(
                   context,
@@ -86,8 +86,14 @@ class UserDashboard extends ConsumerWidget {
       elevation: 2,
       child: InkWell(
         onTap: () {
-          // Clear the selected vital -> AppShell will switch Col 3 to UserInformationWidget
+          // Clear the selected vital -> Switch Col 3 to UserInformationWidget
           ref.read(selectedVitalProvider.notifier).clear();
+
+          // [SAFETY] Ensure we exit Chat mode and go back to Vitals/Info
+          // UPDATED: Uses the new 'UserDetailViewMode' provider
+          ref
+              .read(userDetailViewModeProvider.notifier)
+              .set(UserDetailView.vitals);
         },
         borderRadius: BorderRadius.circular(12),
         child: Padding(
@@ -143,11 +149,11 @@ class UserDashboard extends ConsumerWidget {
       decoration: BoxDecoration(
         color: color.withValues(alpha: 1),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color..withValues(alpha: 0.5)),
+        border: Border.all(color: color.withValues(alpha: 0.5)),
       ),
       child: Text(
         text,
-        style: TextStyle(
+        style: const TextStyle(
           color: Colors.white,
           fontWeight: FontWeight.bold,
           fontSize: 12,
@@ -156,7 +162,6 @@ class UserDashboard extends ConsumerWidget {
     );
   }
 
-  // UPDATED: Now accepts 'ref' and 'selectedVital'
   Widget _buildVitalsGrid(
     BuildContext context,
     WidgetRef ref,
@@ -214,7 +219,7 @@ class UserDashboard extends ConsumerWidget {
     return GridView.builder(
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
-        childAspectRatio: 1.7, // Short/Wide cards (No scrolling)
+        childAspectRatio: 1.7,
         crossAxisSpacing: 16,
         mainAxisSpacing: 12,
       ),
@@ -227,7 +232,6 @@ class UserDashboard extends ConsumerWidget {
         final isSelected = selectedVital == v['label'];
 
         return Card(
-          // Change color if selected
           color: isSelected
               ? Theme.of(context).colorScheme.primaryContainer
               : (isEnabled ? Colors.white : Colors.grey[100]),
@@ -237,17 +241,21 @@ class UserDashboard extends ConsumerWidget {
           child: InkWell(
             onTap: isEnabled
                 ? () {
-                    // Update the provider using the passed 'ref'
                     ref
                         .read(selectedVitalProvider.notifier)
                         .select(v['label'] as String);
+
+                    // [SAFETY] When viewing graph, ensure we exit Chat mode
+                    // UPDATED: Uses the new 'UserDetailViewMode' provider
+                    ref
+                        .read(userDetailViewModeProvider.notifier)
+                        .set(UserDetailView.vitals);
                   }
                 : null,
             borderRadius: BorderRadius.circular(12),
             child: Padding(
               padding: const EdgeInsets.all(16.0),
               child: Row(
-                // Changed from Column to Row for wider cards
                 children: [
                   Icon(
                     v['icon'] as IconData,

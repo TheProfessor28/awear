@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
+import 'package:badges/badges.dart' as badges; // [NEW] Import Badges
 
 import '../providers/user_provider.dart';
 import '../../dashboard/providers/selection_providers.dart';
+import '../../chat/providers/chat_providers.dart'; // [NEW] Import Chat Providers
 import 'user_registration_dialog.dart';
 
 class UserInformationWidget extends ConsumerWidget {
@@ -19,6 +21,12 @@ class UserInformationWidget extends ConsumerWidget {
 
     final user = userList.where((u) => u.id == selectedId).firstOrNull;
     if (user == null) return const Center(child: Text("User not found"));
+
+    // [NEW] Watch Unread Messages for the Badge
+    final unreadCountAsync = ref.watch(
+      unreadMessageCountProvider(user.id.toString()),
+    );
+    final unreadCount = unreadCountAsync.valueOrNull ?? 0;
 
     return Container(
       color: Colors.grey[50],
@@ -36,52 +44,17 @@ class UserInformationWidget extends ConsumerWidget {
                   fontWeight: FontWeight.w500,
                 ),
               ),
-              // --- UPDATED MENU BUTTON ---
+              // --- Menu Button ---
               PopupMenuButton<String>(
                 icon: const Icon(Icons.more_vert),
                 onSelected: (value) {
                   if (value == 'edit') {
-                    // Open Dialog in Edit Mode
                     showDialog(
                       context: context,
                       builder: (_) => UserRegistrationDialog(userToEdit: user),
                     );
                   } else if (value == 'delete') {
-                    // Confirm Delete
-                    showDialog(
-                      context: context,
-                      builder: (ctx) => AlertDialog(
-                        title: const Text(
-                          "Delete User",
-                          style: TextStyle(fontWeight: FontWeight.w500),
-                        ),
-                        content: Text(
-                          "Are you sure you want to delete ${user.firstName} ${user.lastName}?",
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(ctx),
-                            child: const Text("Cancel"),
-                          ),
-                          TextButton(
-                            onPressed: () {
-                              // 1. Delete user
-                              ref
-                                  .read(userNotifierProvider.notifier)
-                                  .deleteUser(user.id);
-                              // 2. Clear selection (so Dashboard goes back to empty state)
-                              ref.read(selectedUserIdProvider.notifier).clear();
-                              // 3. Close dialog
-                              Navigator.pop(ctx);
-                            },
-                            child: const Text(
-                              "Delete",
-                              style: TextStyle(color: Colors.red),
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
+                    _showDeleteConfirm(context, ref, user);
                   }
                 },
                 itemBuilder: (context) => [
@@ -107,7 +80,6 @@ class UserInformationWidget extends ConsumerWidget {
                   ),
                 ],
               ),
-              // ---------------------------
             ],
           ),
           const Divider(),
@@ -139,7 +111,6 @@ class UserInformationWidget extends ConsumerWidget {
                   _buildInfoRow("Weight", "${user.weight ?? '--'} kg"),
                   _buildInfoRow("Blood Type", user.bloodType ?? '--'),
                   _buildInfoRow("Notes", user.medicalInfo ?? 'None'),
-
                   const Gap(20),
                   const Text(
                     "Device Connection",
@@ -155,38 +126,89 @@ class UserInformationWidget extends ConsumerWidget {
             ),
           ),
 
-          // --- Bottom Buttons (Pair/Unpair) ---
+          // --- Bottom Buttons (Chat & Pair) ---
           const Divider(),
           const Gap(10),
-          if (user.pairedDeviceMacAddress == null)
-            ElevatedButton.icon(
-              onPressed: () {
-                // Switch Column 3 to the "Pair User Screen"
-                ref.read(isPairingUserProvider.notifier).set(true);
-              },
-              icon: const Icon(Icons.link),
-              label: const Text("Pair User"),
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                backgroundColor: Theme.of(context).colorScheme.primary,
-                foregroundColor: Colors.white,
+
+          Row(
+            children: [
+              // 1. Chat Button (Left Side)
+              Expanded(
+                child: badges.Badge(
+                  position: badges.BadgePosition.topEnd(top: -12, end: -5),
+                  showBadge: unreadCount > 0,
+                  badgeContent: Text(
+                    unreadCount.toString(),
+                    style: const TextStyle(color: Colors.white, fontSize: 12),
+                  ),
+                  child: SizedBox(
+                    height: 50, // Force same height
+                    width: double.infinity, // Fill Expanded
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.indigo,
+                        foregroundColor: Colors.white,
+                        padding: EdgeInsets.zero, // Compact for side-by-side
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      icon: const Icon(Icons.chat_bubble_outline),
+                      label: const Text("Chat"),
+                      onPressed: () {
+                        ref
+                            .read(userDetailViewModeProvider.notifier)
+                            .set(UserDetailView.chat);
+                      },
+                    ),
+                  ),
+                ),
               ),
-            )
-          else
-            OutlinedButton.icon(
-              onPressed: () async {
-                await ref
-                    .read(userNotifierProvider.notifier)
-                    .unpairUser(user.id);
-              },
-              icon: const Icon(Icons.link_off),
-              label: const Text("Unpair User"),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.red,
-                side: const BorderSide(color: Colors.red),
-                padding: const EdgeInsets.symmetric(vertical: 16),
+
+              const Gap(12), // Space between buttons
+              // 2. Pair/Unpair Button (Right Side)
+              Expanded(
+                child: SizedBox(
+                  height: 50, // Force same height
+                  child: user.pairedDeviceMacAddress == null
+                      ? ElevatedButton.icon(
+                          onPressed: () {
+                            ref.read(isPairingUserProvider.notifier).set(true);
+                          },
+                          icon: const Icon(Icons.link),
+                          label: const Text("Pair"),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Theme.of(
+                              context,
+                            ).colorScheme.primary,
+                            foregroundColor: Colors.white,
+                            padding: EdgeInsets.zero,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        )
+                      : OutlinedButton.icon(
+                          onPressed: () async {
+                            await ref
+                                .read(userNotifierProvider.notifier)
+                                .unpairUser(user.id);
+                          },
+                          icon: const Icon(Icons.link_off),
+                          label: const Text("Unpair"),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.red,
+                            side: const BorderSide(color: Colors.red),
+                            padding: EdgeInsets.zero,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ),
+                ),
               ),
-            ),
+            ],
+          ),
         ],
       ),
     );
@@ -209,6 +231,35 @@ class UserInformationWidget extends ConsumerWidget {
             ),
           ),
           Expanded(child: Text(value, style: const TextStyle(fontSize: 16))),
+        ],
+      ),
+    );
+  }
+
+  void _showDeleteConfirm(BuildContext context, WidgetRef ref, dynamic user) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text(
+          "Delete User",
+          style: TextStyle(fontWeight: FontWeight.w500),
+        ),
+        content: Text(
+          "Are you sure you want to delete ${user.firstName} ${user.lastName}?",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Cancel"),
+          ),
+          TextButton(
+            onPressed: () {
+              ref.read(userNotifierProvider.notifier).deleteUser(user.id);
+              ref.read(selectedUserIdProvider.notifier).clear();
+              Navigator.pop(ctx);
+            },
+            child: const Text("Delete", style: TextStyle(color: Colors.red)),
+          ),
         ],
       ),
     );
